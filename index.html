@@ -573,6 +573,1339 @@
     <h3>Capability Stages</h3>
     <p>This tool grows at your direction. Click any stage in the panel to switch — it will tell you exactly what changes and what leaves your device before you confirm.</p>
     <p><strong>Stage 0 — Sovereign:</strong> Local index only. Nothing leaves your device.</p>
+    <p><strong>Stage 1 — Public AI:</strong> Adds live AI via Groq (free, no credit card). Queries go to Groq servers.</p>
+    <p><strong>Stage 2 — Credentialed:</strong> Your own free Groq key for higher rate limits and reliability.</p>
+    <p><strong>Stage 3 — Full HELIX:</strong> Parallel multi-agent synthesis. Groq, Gemini, GPT-4o, HuggingFace simultaneously. Requires keys.</p>
+    <p style="font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--rust);margin-top:8px;">The tool will never prompt you to upgrade unprompted. Limitations are disclosed only when a query actually needs more than the current stage provides.</p>
+    <div class="modal-footer">
+      <button class="btn" onclick="closeModal('overviewModal')">CLOSE</button>
+    </div>
+  </div>
+</div>
+<div class="modal-overlay" id="cacheModal">
+  <div class="modal">
+    <h3>Recalled Conversations</h3>
+    <p style="font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--rust);">
+      Stored locally on this device. Never transmitted.
+    </p>
+    <div id="cacheList" style="margin-top:10px;"></div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="clearCache()">CLEAR ALL</button>
+      <button class="btn" onclick="closeModal('cacheModal')">CLOSE</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════════════
+// PRIMARY SOURCE INDEX
+// ═══════════════════════════════════════════════════════════
+const SOURCES = [
+  {
+    id: 's1',
+    title: 'Federalist No. 46',
+    author: 'James Madison, 1788',
+    excerpt: 'Besides the advantage of being armed, which the Americans possess over the people of almost every other nation, the existence of subordinate governments, to which the people are attached... forms a barrier against the enterprises of ambition.',
+    tags: ['militia','arms','tyranny','civic'],
+    url: 'https://founders.archives.gov/documents/Madison/01-10-02-0238',
+    keywords: ['madison','federalist 46','armed','militia','tyranny','barrier','ambition']
+  },
+  {
+    id: 's2',
+    title: 'Federalist No. 29',
+    author: 'Alexander Hamilton, 1788',
+    excerpt: 'Little more can reasonably be aimed at, with respect to the people at large, than to have them properly armed and equipped; and in order to see that this be not neglected, it will be necessary to assemble them once or twice in the course of a year.',
+    tags: ['militia','arms','civic'],
+    url: 'https://founders.archives.gov/documents/Hamilton/01-04-02-0199',
+    keywords: ['hamilton','federalist 29','armed','equipped','militia','assemble']
+  },
+  {
+    id: 's3',
+    title: 'Virginia Declaration of Rights, §13',
+    author: 'George Mason, 1776',
+    excerpt: 'That a well regulated Militia, composed of the body of the people, trained to arms, is the proper, natural, and safe defence of a free State; that Standing Armies, in time of peace, should be avoided as dangerous to liberty.',
+    tags: ['militia','arms','natural','tyranny'],
+    url: 'https://avalon.law.yale.edu/18th_century/virginia.asp',
+    keywords: ['mason','virginia','militia','body of the people','standing armies','liberty','defence']
+  },
+  {
+    id: 's4',
+    title: 'Debates in the Virginia Ratifying Convention',
+    author: 'Patrick Henry, June 1788',
+    excerpt: 'The great object is that every man be armed. Everyone who is able may have a gun. But have we not learned by experience that, necessary as it is to have arms, and though our Assembly has, by a succession of laws for many years, endeavored to have the militia armed, they are nevertheless but poorly armed?',
+    tags: ['arms','civic','militia'],
+    url: 'https://founders.archives.gov/documents/Madison/01-11-02-0083',
+    keywords: ['henry','patrick','armed','gun','militia','virginia','ratifying','convention']
+  },
+  {
+    id: 's5',
+    title: 'Federal Farmer Letters, No. 18',
+    author: 'Richard Henry Lee (attr.), 1788',
+    excerpt: 'A militia, when properly formed, are in fact the people themselves, and render regular troops in a great measure unnecessary. The powers to form and arm the militia, to appoint their officers, and to command their services, are very important.',
+    tags: ['militia','natural','civic'],
+    url: 'https://teachingamericanhistory.org/document/federal-farmer-xviii/',
+    keywords: ['federal farmer','lee','militia','people themselves','troops','arm']
+  },
+  {
+    id: 's6',
+    title: 'Second Treatise on Government, Ch. 19',
+    author: 'John Locke, 1689',
+    excerpt: 'Whenever the legislators endeavor to take away and destroy the property of the people, or to reduce them to slavery under arbitrary power, they put themselves into a state of war with the people, who are thereupon absolved from any farther obedience.',
+    tags: ['natural','tyranny'],
+    url: 'https://www.gutenberg.org/ebooks/7370',
+    keywords: ['locke','natural law','property','slavery','arbitrary','war with the people','obedience','tyranny']
+  },
+  {
+    id: 's7',
+    title: 'Commentaries on the Laws of England, Book 1',
+    author: 'Sir William Blackstone, 1765',
+    excerpt: 'The fifth and last auxiliary right of the subject... is that of having arms for their defence, suitable to their condition and degree, and such as are allowed by law.',
+    tags: ['natural','arms'],
+    url: 'https://avalon.law.yale.edu/subject_menus/blackstone.asp',
+    keywords: ['blackstone','commentaries','right','arms','defence','auxiliary','subject']
+  },
+  {
+    id: 's8',
+    title: 'District of Columbia v. Heller',
+    author: 'Supreme Court of the United States, 2008',
+    excerpt: 'The Second Amendment protects an individual right to possess a firearm unconnected with service in a militia, and to use that arm for traditionally lawful purposes, such as self-defense within the home.',
+    tags: ['caselaw','arms'],
+    url: 'https://www.law.cornell.edu/supct/html/07-290.ZO.html',
+    keywords: ['heller','second amendment','individual right','firearm','militia','self-defense','home','supreme court']
+  },
+  {
+    id: 's9',
+    title: 'McDonald v. City of Chicago',
+    author: 'Supreme Court of the United States, 2010',
+    excerpt: 'The Due Process Clause of the Fourteenth Amendment incorporates the Second Amendment right recognized in Heller, making it applicable to the states.',
+    tags: ['caselaw','arms'],
+    url: 'https://www.law.cornell.edu/supct/html/08-1521.ZO.html',
+    keywords: ['mcdonald','chicago','fourteenth','incorporation','states','heller','second amendment']
+  },
+  {
+    id: 's10',
+    title: 'New York State Rifle & Pistol Association v. Bruen',
+    author: 'Supreme Court of the United States, 2022',
+    excerpt: 'The Second and Fourteenth Amendments protect an individual\'s right to carry a handgun for self-defense outside the home. When the Second Amendment\'s plain text covers an individual\'s conduct, the Constitution presumptively protects that conduct.',
+    tags: ['caselaw','arms'],
+    url: 'https://www.supremecourt.gov/opinions/21pdf/20-843_7j80.pdf',
+    keywords: ['bruen','carry','handgun','outside','home','text','history','tradition','fourteenth']
+  },
+  {
+    id: 's11',
+    title: 'Declaration of Independence',
+    author: 'Continental Congress, 1776',
+    excerpt: 'We hold these truths to be self-evident, that all men are created equal, that they are endowed by their Creator with certain unalienable Rights... That whenever any Form of Government becomes destructive of these ends, it is the Right of the People to alter or to abolish it.',
+    tags: ['natural','tyranny','civic'],
+    url: 'https://founders.archives.gov/documents/Jefferson/01-01-02-0176',
+    keywords: ['declaration','independence','self-evident','unalienable','rights','alter','abolish','destructive','government']
+  },
+  {
+    id: 's12',
+    title: 'Massachusetts Body of Liberties §9',
+    author: 'Puritan General Court, 1641',
+    excerpt: 'No man\'s life shall be taken away, no man\'s honour or good name shall be stained, no man\'s person shall be arrested, restrained, banished, dismembered, nor any ways punished... unless it be by virtue or equity of some express law of the Country warranting the same.',
+    tags: ['natural','civic'],
+    url: 'https://avalon.law.yale.edu/17th_century/mass02.asp',
+    keywords: ['massachusetts','body of liberties','due process','law','punished','arrested','restrained']
+  },
+  {
+    id: 's13',
+    title: 'Sons of Liberty Broadside — Stamp Act Resistance',
+    author: 'Boston Committee of Correspondence, 1765',
+    excerpt: 'We are determined to the last to abide by the resolution never to be slaves. We are the sons of liberty. We will not tamely submit. We will resist unto death all attempts to deprive us of our just liberties.',
+    tags: ['tyranny','civic','militia'],
+    url: 'https://www.loc.gov/collections/broadsides-and-other-printed-ephemera/',
+    keywords: ['sons of liberty','stamp act','resist','slaves','liberty','boston','broadside','tamely']
+  },
+  {
+    id: 's15',
+    title: 'United States v. Rahimi',
+    author: 'Supreme Court of the United States, 2024',
+    excerpt: 'An individual found by a court to pose a credible threat to the physical safety of another may be temporarily disarmed consistent with the Second Amendment. Since the Founding, firearm laws have included regulations to stop individuals who threaten physical harm to others.',
+    tags: ['caselaw','arms'],
+    url: 'https://www.law.cornell.edu/supremecourt/text/22-915',
+    keywords: ['rahimi','domestic violence','restraining order','credible threat','disarmed','922(g)(8)','bruen standard']
+  },
+  {
+    id: 's16',
+    title: 'Constitution Annotated — Historical Background, 2A',
+    author: 'Library of Congress, Congress.gov',
+    excerpt: 'In the Federalist, James Madison argued that State governments, with the people on their side, would be more than adequate to counterbalance a federally controlled regular army. The advantage of being armed, together with subordinate governments, forms a barrier against the enterprises of ambition.',
+    tags: ['militia','natural','tyranny','research'],
+    url: 'https://constitution.congress.gov/browse/essay/amdt2-2/ALDE_00013262/',
+    keywords: ['conan','constitution annotated','historical background','madison','barrier','standing army','anti-federalist']
+  },
+  {
+    id: 's17',
+    title: 'Constitution Annotated — Early 2A Jurisprudence',
+    author: 'Library of Congress, Congress.gov',
+    excerpt: 'For most of its history, the Second Amendment was not substantively addressed by the Supreme Court. Cruikshank (1875) and similar cases established for a time that the Amendment was a bar only to federal government action, a view since invalidated by Heller and McDonald.',
+    tags: ['caselaw','research'],
+    url: 'https://constitution.congress.gov/browse/essay/amdt2-3/ALDE_00013263/',
+    keywords: ['conan','cruikshank','presser','early jurisprudence','federal action','incorporation']
+  },
+  {
+    id: 's18',
+    title: 'Constitution Annotated — Heller and Individual Right',
+    author: 'Library of Congress, Congress.gov',
+    excerpt: 'In the 2008 case District of Columbia v. Heller, the Supreme Court held, after a lengthy historical analysis, that the Second Amendment protects an individual right to possess firearms, resolving a long-running disagreement over collective versus individual right.',
+    tags: ['caselaw','research','arms'],
+    url: 'https://constitution.congress.gov/browse/essay/amdt2-1/ALDE_00000408/',
+    keywords: ['conan','heller overview','individual right','collective right','disagreement','historical analysis']
+  },
+  {
+    id: 's19',
+    title: 'Constitution Annotated — Post-Heller and Incorporation',
+    author: 'Library of Congress, Congress.gov',
+    excerpt: 'Heller left several questions unanswered, including what level of scrutiny should apply to laws implicating the Second Amendment. McDonald later applied the right against the states through the doctrine of selective incorporation under the Fourteenth Amendment.',
+    tags: ['caselaw','research'],
+    url: 'https://constitution.congress.gov/browse/essay/amdt2-5/ALDE_00013265/',
+    keywords: ['conan','post-heller','incorporation','scrutiny','mcdonald','fourteenth amendment','breyer dissent']
+  },
+  {
+    id: 's20',
+    title: 'Constitution Annotated — Bruen and Concealed Carry',
+    author: 'Library of Congress, Congress.gov',
+    excerpt: 'In the 2022 case New York State Rifle & Pistol Association v. Bruen, the Court considered the constitutionality of concealed-carry licensing regimes and established a text-history-tradition test for evaluating the constitutionality of firearms regulations.',
+    tags: ['caselaw','research'],
+    url: 'https://constitution.congress.gov/browse/amendment-2/',
+    keywords: ['conan','bruen overview','concealed carry','licensing','text history tradition test']
+  }
+];
+
+// ═══════════════════════════════════════════════════════════
+// LEGAL RESOURCES INDEX
+// ═══════════════════════════════════════════════════════════
+const RESOURCES = [
+  { name: 'Firearms Policy Coalition', type: 'LITIGATION · 2A', tags: ['2a'], url: 'https://www.firearmspolicy.org' },
+  { name: 'Gun Owners of America', type: 'ADVOCACY · 2A', tags: ['2a'], url: 'https://www.gunowners.org' },
+  { name: 'Second Amendment Foundation', type: 'LEGAL DEFENSE · 2A', tags: ['2a'], url: 'https://www.saf.org' },
+  { name: 'NRA-ILA Legal Resources', type: 'LEGAL INFO · 2A', tags: ['2a'], url: 'https://www.nraila.org' },
+  { name: 'ACLU — Bill of Rights Defense', type: 'CIVIL LIBERTIES', tags: ['civil'], url: 'https://www.aclu.org' },
+  { name: 'Institute for Justice', type: 'CIVIL RIGHTS LITIGATION', tags: ['civil'], url: 'https://ij.org' },
+  { name: 'National Legal Aid & Defender Assoc.', type: 'PUBLIC DEFENSE', tags: ['public'], url: 'https://www.nlada.org' },
+  { name: 'LawHelp.org', type: 'FREE LEGAL HELP DIRECTORY', tags: ['public'], url: 'https://www.lawhelp.org' },
+  { name: 'PACER — Federal Court Records', type: 'PUBLIC RECORDS', tags: ['public','research'], url: 'https://pacer.uscourts.gov' },
+  { name: 'Founders Online (Nat. Archives)', type: 'PRIMARY SOURCE ARCHIVE', tags: ['research'], url: 'https://founders.archives.gov' },
+  { name: 'Avalon Project — Yale Law', type: 'HISTORICAL DOCUMENTS', tags: ['research'], url: 'https://avalon.law.yale.edu' },
+  { name: 'Cornell LII — Case Law', type: 'LEGAL REFERENCE', tags: ['research','civil'], url: 'https://www.law.cornell.edu' },
+  { name: 'Library of Congress Broadsides', type: 'HISTORICAL ARCHIVE', tags: ['research'], url: 'https://www.loc.gov/collections/broadsides-and-other-printed-ephemera/' },
+  { name: 'ProSe Legal Clinic Directory', type: 'SELF-REPRESENTATION AID', tags: ['public'], url: 'https://www.uscourts.gov/legal-assistance' },
+  { name: 'Constitution Annotated (CONAN)', type: 'OFFICIAL CLAUSE-BY-CLAUSE ANALYSIS', tags: ['research','2a'], url: 'https://constitution.congress.gov' },
+  { name: 'Oyez — Supreme Court Audio & Cases', type: 'CASE LAW RESEARCH', tags: ['research','2a'], url: 'https://www.oyez.org' }
+];
+
+// ═══════════════════════════════════════════════════════════
+// LOCAL KNOWLEDGE BASE FOR STAGE 0 RESPONSES
+// ═══════════════════════════════════════════════════════════
+const KB = [
+  {
+    keys: ['well regulated','well-regulated','regulated militia','what did founders mean'],
+    response: `The phrase "well regulated" in 1788 usage did not mean "subject to government rules." It meant properly functioning, disciplined, and equipped — the same usage as "a well-regulated clock."
+
+Madison in Federalist 46 distinguishes the armed citizenry from a standing army precisely because the people are self-organized and locally accountable — not because they are government-controlled.
+
+George Mason's Virginia Declaration of Rights (1776) defines the militia as "the body of the people, trained to arms" — not a government body, but the civic whole.
+
+MATCHED SOURCES: Federalist 46, Federalist 29, Virginia Declaration §13, Federal Farmer No. 18`
+  },
+  {
+    keys: ['constitution annotated','conan','congress.gov','official annotation','library of congress'],
+    response: `The Constitution Annotated (CONAN) is the Library of Congress's official clause-by-clause legal analysis of the Constitution, continuously updated with case law. It's public domain and available at constitution.congress.gov.
+
+For the Second Amendment, CONAN organizes the doctrine into six sections: historical background, early jurisprudence (largely dormant until the 20th century), Heller and the individual right, post-Heller incorporation questions, Bruen and concealed carry, and Rahimi's application of the Bruen standard.
+
+CONAN is the right tool when you need the formal doctrinal history — how courts have actually interpreted the text over time — as a companion to the founding-era intent sources already indexed here. The two together cover both "what did they mean" and "how has it been applied since."
+
+MATCHED SOURCES: Constitution Annotated — Historical Background, Early 2A Jurisprudence, Heller and Individual Right, Post-Heller and Incorporation, Bruen and Concealed Carry`
+  },
+  {
+    keys: ['atf','bureau of alcohol','bureau of firearms','federal agency','administrative agency'],
+    response: `The founders had no direct analogue to the ATF, but their writings give a clear framework for evaluating it.
+
+The core anti-federalist fear, recorded in CONAN's historical background essay, was a federally controlled standing army or enforcement apparatus that could "destroy public liberty and erect a military despotism." Madison's response in Federalist 46 wasn't to deny the risk but to argue the armed citizenry and state governments would counterbalance it.
+
+An agency with rulemaking authority over firearms — defining what counts as a "machine gun" or regulating accessories by administrative reclassification rather than legislation — would likely trouble the founders on separation-of-powers grounds alone. They located lawmaking power in Congress, not in executive agencies. Patrick Henry and George Mason's objections at the Virginia Convention centered specifically on concern that federal control over arms regulation, even indirect, could be used to disarm the population by degrees rather than by outright prohibition.
+
+This is a case where applying their framework requires reasoning by analogy rather than citing direct text — the administrative state is a structural feature they didn't anticipate.
+
+MATCHED SOURCES: Federalist 46, CONAN Historical Background, Patrick Henry Virginia Convention, George Mason`
+  },
+  {
+    keys: ['natural law','natural right','locke','blackstone','natural basis'],
+    response: `The founders drew directly on two natural law traditions:
+
+John Locke (1689): Government that reduces subjects to arbitrary power enters a "state of war with the people" — dissolving their obligation to obey and restoring their natural right of self-preservation.
+
+Blackstone (1765): Listed "having arms for their defence" as one of five fundamental auxiliary rights of English subjects — rights that existed before and independently of any statute.
+
+Jefferson synthesized both: "unalienable rights" endowed by the Creator, not granted by government, therefore incapable of being legitimately surrendered.
+
+This lineage runs: Locke → Blackstone → Mason → Jefferson → Madison → 2nd Amendment.`
+  },
+  {
+    keys: ['sons of liberty','stamp act','colonial resistance','broadside'],
+    response: `The Sons of Liberty (1765–1776) established the model the founders were directly working from when drafting the Constitution.
+
+Their core assertion: armed resistance to unjust authority is not rebellion — it is the lawful exercise of natural rights when government has already broken the social compact.
+
+Their broadsides declared: "We will resist unto death all attempts to deprive us of our just liberties." This was not metaphor — it was the civic posture the founding generation considered normal and obligatory.
+
+The Constitution was written by men who had just done exactly this. When they wrote "the right of the people to keep and bear arms shall not be infringed," they were writing as men who had exercised that right against a legitimate government they judged to have become tyrannical.`
+  },
+  {
+    keys: ['federalist 46','madison','barrier','tyranny','federal'],
+    response: `Federalist No. 46 is Madison's most direct statement on the armed citizenry as constitutional check.
+
+Key arguments:
+1. Americans are "armed" in a way Europeans are not — this is a structural advantage of republican government
+2. A federal standing army, even at 25,000–30,000 men, would face "a militia amounting to near half a million citizens with arms in their hands"
+3. State governments and local attachments provide organizational structure for resistance
+4. The "barrier" against federal overreach is not primarily legal — it is the armed, organized population itself
+
+Madison's frame: tyranny is not merely a legal problem. It is a power problem. The armed citizenry is the power-level answer.
+
+URL: founders.archives.gov`
+  },
+  {
+    keys: ['heller','dc v heller','district of columbia','individual right','supreme court 2008'],
+    response: `District of Columbia v. Heller (2008) — key holdings:
+
+1. The Second Amendment protects an individual right, unconnected to militia service
+2. "Well regulated Militia" in the prefatory clause does not limit the operative clause
+3. The core right is self-defense — the "central component" of the right
+4. Handguns are protected as "the quintessential self-defense weapon"
+5. The right extends to the home, at minimum
+
+Scalia's majority opinion extensively uses founding-era sources — Blackstone, colonial statutes, Anti-Federalist papers — to establish original meaning.
+
+McDonald (2010) incorporated Heller against state governments via the 14th Amendment.
+Bruen (2022) extended the right to carry outside the home and established text-history-tradition as the sole test for 2A regulations — striking Intermediate Scrutiny.`
+  },
+  {
+    keys: ['patrick henry','henry','virginia convention','ratifying'],
+    response: `Patrick Henry at the Virginia Ratifying Convention (1788) was the most forceful Anti-Federalist voice on arms and liberty.
+
+His core argument: the proposed Constitution gave the federal government too much power over the militia — effectively allowing disarmament by neglect or deliberate policy.
+
+Key passage: "The great object is that every man be armed. Everyone who is able may have a gun."
+
+Henry was not arguing for a narrow militia right. He was arguing that universal armament of the citizenry was the only reliable check against consolidated federal power — more reliable than legal protections, which a sufficiently powerful government could override.
+
+His concern proved prescient: the Bill of Rights, including the Second Amendment, was added largely because of Anti-Federalist pressure from men like Henry, Mason, and Lee.`
+  },
+  {
+    keys: ['george mason','mason','disarm','enslave'],
+    response: `George Mason is the source of one of the most-cited founding-era statements on arms:
+
+"To disarm the people is the best and most effectual way to enslave them."
+
+Mason authored the Virginia Declaration of Rights (1776), which defined the militia as "the body of the people, trained to arms" — the model Jefferson drew on for the Declaration of Independence.
+
+At the Virginia Ratifying Convention Mason argued alongside Henry that the Constitution must explicitly protect the right to bear arms, warning that federal control over militia training and muster could effectively disarm the population without a formal prohibition.
+
+His influence fed directly into Madison's drafting of the Second Amendment.`
+  },
+  {
+    keys: ['bruen','carry','outside','public carry','new york'],
+    response: `New York State Rifle & Pistol Association v. Bruen (2022) — the most significant 2A ruling since Heller.
+
+Key holdings:
+1. The right to carry a handgun for self-defense outside the home is constitutionally protected
+2. "May issue" licensing regimes (requiring demonstrated "proper cause") are unconstitutional
+3. Courts may NO LONGER apply interest-balancing or intermediate/strict scrutiny to 2A claims
+4. The sole constitutional test: whether the regulation is consistent with text, history, and tradition of American firearms regulation
+
+Bruen invalidated New York's 108-year-old licensing scheme and by extension affected similar laws in California, Maryland, Massachusetts, New Jersey, and Hawaii.
+
+The text-history-tradition test substantially shifts the burden to governments to prove historical analogues for any firearms restriction.`
+  },
+  {
+    keys: ['legal aid','attorney','lawyer','defense','find','civil rights attorney','public defender'],
+    response: `Legal resource pathways — from public to private:
+
+PUBLIC DEFENSE:
+· National Legal Aid & Defender Association — nlada.org
+· LawHelp.org — state-by-state free legal help directory
+· Federal court Pro Se clinics — uscourts.gov/legal-assistance
+
+CIVIL RIGHTS / 2A LITIGATION:
+· Firearms Policy Coalition — firearmspolicy.org (active litigation docket)
+· Second Amendment Foundation — saf.org (legal defense fund)
+· Institute for Justice — ij.org (civil liberties, no 2A restriction)
+· ACLU — aclu.org (selective 2A engagement, strong on due process)
+
+PRIVATE CRIMINAL DEFENSE:
+· State bar referral services (each state bar has a lawyer referral line)
+· PACER (pacer.uscourts.gov) to research attorneys active in relevant case types
+
+RESEARCH SUPPORT:
+· Cornell LII — law.cornell.edu (free case law, statutes, Constitution)
+· Oyez — oyez.org (Supreme Court oral arguments + full opinions)`
+  },
+  {
+    keys: ['declaration of independence','unalienable','self-evident','alter or abolish'],
+    response: `The Declaration of Independence (1776) establishes the theoretical foundation the Second Amendment operationalizes.
+
+Core sequence:
+1. Rights are natural and pre-political — "endowed by their Creator," not granted by government
+2. Government's only legitimate purpose is securing those rights
+3. When government becomes "destructive of these ends," the people have not just a right but a "duty" to alter or abolish it
+4. This is not contingent on legal process — it is a natural right that precedes constitutions
+
+The Declaration was not just rhetoric. It was a legal argument addressed to "a candid world" justifying armed resistance as the exercise of natural right.
+
+The founders who wrote the Second Amendment were the same men who signed, argued for, and risked their lives on that argument.`
+  },
+  {
+    keys: ['rahimi','domestic violence restraining order','credible threat','922(g)(8)'],
+    response: `United States v. Rahimi (2024) — most recent major 2A ruling, 8-1 decision.
+
+Key holding: an individual found by a court to pose a credible threat to another's physical safety may be temporarily disarmed consistent with the Second Amendment.
+
+What it clarified about Bruen's text-history-tradition test:
+1. Courts do not need an exact historical twin for a modern law — only a "relevantly similar" historical analogue
+2. The Second Amendment is not frozen to only the types of arms or regulations that existed in 1791
+3. The Fifth Circuit had misapplied Bruen by demanding too precise a historical match — the Supreme Court called this "slaying a straw man"
+
+Significance: Rahimi narrowed the most aggressive readings of Bruen. It confirmed disarmament laws tied to demonstrated dangerousness (not status alone) can survive — but explicitly rejected the government's broader argument that only "responsible" citizens enjoy the right, calling that term too vague to support a rule.`
+  },
+  {
+    keys: ['constitution annotated','conan','official analysis','library of congress constitution'],
+    response: `The Constitution Annotated (CONAN) is the Library of Congress's official clause-by-clause legal analysis of the Constitution, continuously updated with new case law. It's public domain and available free at constitution.congress.gov.
+
+For the Second Amendment specifically, CONAN organizes the doctrine into:
+· Amdt2.1 — Overview
+· Amdt2.2 — Historical Background (founding-era debates, Anti-Federalist concerns about standing armies)
+· Amdt2.3 — Early Jurisprudence (Cruikshank, Presser, Miller v. Texas)
+· Amdt2.4 — Heller and the Individual Right
+· Amdt2.5 — Post-Heller Issues, incorporation against states
+· Amdt2.6 — Bruen and concealed-carry
+· Amdt2.7 — Rahimi and applying the Bruen standard
+
+CONAN is the right complement to founding-era primary sources here — it tracks the formal legal doctrine's evolution, while sources like Federalist 46 and the Anti-Federalist papers capture original intent and natural rights reasoning. Together they answer both "what did they mean" and "how have courts ruled since."`
+  },
+  {
+    keys: ['atf','bureau of alcohol tobacco firearms','federal firearms agency','nfa branch'],
+    response: `The founders left no direct comment on the ATF since it didn't exist until 1972 (spun off from Treasury's Alcohol Tax Unit). But their framework offers a clear lens to evaluate it through.
+
+Relevant founding-era principles:
+1. Madison's Federalist 46 argued the chief check on federal overreach was an armed citizenry, not administrative agencies — the founders distrusted concentrated enforcement power generally, captured in Anti-Federalist warnings against a "standing army" with domestic police functions
+2. The Anti-Federalists (Brutus, Federal Farmer) specifically worried about a federal government with both the power to regulate militias AND a permanent enforcement apparatus — seeing this combination as a path to "military despotism"
+3. George Mason's "to disarm the people is the best and most effectual way to enslave them" applies most directly to questions about ATF rulemaking that functionally restricts categories of arms via regulatory reclassification rather than legislation
+
+A founding-era constitutionalist critique of the ATF would likely center on: agency rulemaking authority over what constitutes a "firearm" (separation of powers concern — Congress legislates, agencies execute), and whether civil enforcement actions against citizens for regulatory violations respect due process as understood in 1791.
+
+This is a contested live legal area — see Cargill v. Garland (2024, bump stock rule) and ongoing litigation over pistol-brace and "ghost gun" rules for current doctrinal status.`
+  }
+];
+
+// ═══════════════════════════════════════════════════════════
+// STATE
+// ═══════════════════════════════════════════════════════════
+let currentStage = 0;
+let activeSourceFilter = 'all';
+let activeResourceFilter = 'all';
+let cache = JSON.parse(localStorage.getItem('helix_cache') || '[]');
+
+// ═══════════════════════════════════════════════════════════
+// INIT
+// ═══════════════════════════════════════════════════════════
+document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('currentDate').textContent =
+    new Date().toLocaleDateString('en-US', {weekday:'long',year:'numeric',month:'long',day:'numeric'}).toUpperCase();
+  renderSources();
+  renderResources();
+  renderStages();
+  updateCacheCount();
+  checkNetwork();
+});
+
+// ═══════════════════════════════════════════════════════════
+// NETWORK CHECK
+// ═══════════════════════════════════════════════════════════
+function checkNetwork() {
+  const el = document.getElementById('netStatus');
+  if (navigator.onLine) {
+    el.innerHTML = '<span class="online">NETWORK: ONLINE</span>';
+  } else {
+    el.innerHTML = '<span class="offline">NETWORK: OFFLINE — STAGE 0 ONLY</span>';
+  }
+}
+window.addEventListener('online', checkNetwork);
+window.addEventListener('offline', checkNetwork);
+
+// ═══════════════════════════════════════════════════════════
+// RENDER SOURCES
+// ═══════════════════════════════════════════════════════════
+function renderSources(filter = 'all', highlight = null) {
+  const list = document.getElementById('sourceList');
+  const filtered = filter === 'all'
+    ? SOURCES
+    : SOURCES.filter(s => s.tags.includes(filter));
+
+  if (filtered.length === 0) {
+    list.innerHTML = '<p style="font-family:Share Tech Mono,monospace;font-size:10px;color:var(--aged);padding:8px 0;">No sources match this filter.</p>';
+    return;
+  }
+
+  list.innerHTML = filtered.map(s => {
+    const isHighlighted = highlight && highlight.includes(s.id);
+    const border = isHighlighted ? 'border-color: var(--rust); background: rgba(139,58,26,0.04);' : '';
+    return `
+    <div class="source-card" style="${border}">
+      <div class="s-title">${s.title}</div>
+      <div class="s-author">${s.author}</div>
+      <div class="s-excerpt">"${s.excerpt.substring(0,180)}${s.excerpt.length > 180 ? '...' : ''}"</div>
+      <a class="s-link" href="${s.url}" target="_blank" rel="noopener">→ VIEW SOURCE ↗</a>
+      <div class="s-tags">${s.tags.map(t => `<span class="s-tag">${t.toUpperCase()}</span>`).join('')}</div>
+    </div>`;
+  }).join('');
+}
+
+function filterSources(filter, btn) {
+  activeSourceFilter = filter;
+  document.querySelectorAll('#filterTags .tag').forEach(t => t.classList.remove('active'));
+  btn.classList.add('active');
+  renderSources(filter);
+}
+
+// ═══════════════════════════════════════════════════════════
+// RENDER RESOURCES
+// ═══════════════════════════════════════════════════════════
+function renderResources(filter = 'all') {
+  const list = document.getElementById('resourceList');
+  const filtered = filter === 'all'
+    ? RESOURCES
+    : RESOURCES.filter(r => r.tags.includes(filter));
+
+  list.innerHTML = filtered.map(r => `
+    <div class="resource-item">
+      <div class="r-name">${r.name}</div>
+      <div class="r-type">${r.type}</div>
+      <a href="${r.url}" target="_blank" rel="noopener">→ ${r.url.replace('https://','')}</a>
+    </div>
+  `).join('');
+}
+
+function filterResources(filter, btn) {
+  activeResourceFilter = filter;
+  btn.closest('.col').querySelectorAll('.tag').forEach(t => t.classList.remove('active'));
+  btn.classList.add('active');
+  renderResources(filter);
+}
+
+// ═══════════════════════════════════════════════════════════
+// RENDER STAGES
+// ═══════════════════════════════════════════════════════════
+const STAGE_DEFS = [
+  { n: 0, name: 'STAGE 0 — SOVEREIGN', desc: 'Local index only. No network. No credentials.', state: 'active' },
+  { n: 1, name: 'STAGE 1 — PUBLIC AI', desc: 'Free AI endpoints, no account.', state: 'available' },
+  { n: 2, name: 'STAGE 2 — CREDENTIALED', desc: 'Free tier tokens, persistent history.', state: 'available' },
+  { n: 3, name: 'STAGE 3 — FULL HELIX', desc: 'Multi-agent parallel synthesis.', state: 'available' }
+];
+
+function renderStages() {
+  const list = document.getElementById('stageList');
+  list.innerHTML = STAGE_DEFS.map(s => {
+    const isActive = s.n === currentStage;
+    const dotClass = isActive ? 'dot-active' : 'dot-available';
+    const activeStyle = isActive ? 'color:var(--green);' : 'cursor:pointer;';
+    const activeLabel = isActive ? ' ◉ ACTIVE' : ' → SELECT';
+    return `
+    <div class="stage-item" onclick="handleStageClick(${s.n})" title="${isActive ? 'Currently active' : 'Click to switch to this stage'}">
+      <div class="stage-dot ${dotClass}"></div>
+      <div class="si-text" style="${activeStyle}">
+        <span class="si-name">${s.name}<span style="font-size:8px;opacity:0.6;">${activeLabel}</span></span>
+        ${s.desc}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// ═══════════════════════════════════════════════════════════
+// QUERY ENGINE
+// ═══════════════════════════════════════════════════════════
+function setQuery(q) {
+  document.getElementById('queryInput').value = q;
+  runQuery();
+}
+
+function runQuery() {
+  const raw = document.getElementById('queryInput').value.trim();
+  if (!raw) return;
+
+  const q = raw.toLowerCase();
+  const output = document.getElementById('aiOutput');
+  const matched = document.getElementById('matchedSources');
+  const limitNote = document.getElementById('limitNote');
+
+  // Find KB match
+  let response = null;
+  for (const entry of KB) {
+    if (entry.keys.some(k => q.includes(k))) {
+      response = entry.response;
+      break;
+    }
+  }
+
+  // Find matching sources
+  const qWords = q.split(/\s+/).filter(w => w.length > 3);
+  const matchedIds = SOURCES.filter(s =>
+    s.keywords.some(k => qWords.some(w => k.includes(w) || w.includes(k)))
+  ).map(s => s.id);
+
+  if (response) {
+    output.textContent = response;
+    limitNote.classList.remove('visible');
+    saveToCache(raw, response);
+  } else if (currentStage >= 1) {
+    limitNote.classList.remove('visible');
+    queryLiveAI(raw).then(liveResponse => {
+      if (liveResponse) {
+        output.textContent = liveResponse;
+        saveToCache(raw, liveResponse);
+      }
+    });
+    return;
+  } else {
+    output.textContent = `No indexed entry found for: "${raw}"\n\nThe local index covers founding-era primary sources, natural rights theory, key case law (Heller, McDonald, Bruen), and legal resource pathways.\n\nClick any stage in the right panel to learn what it adds, or ask directly.`;
+    limitNote.innerHTML = `Query exceeds local index. <strong>Stage 1</strong> adds live AI synthesis — no account required. Click the stage panel to switch.`;
+    limitNote.classList.add('visible');
+    saveToCache(raw, output.textContent);
+  }
+
+  // Highlight matched sources in left column
+  renderSources(activeSourceFilter, matchedIds);
+
+  // Show matched sources below response
+  if (matchedIds.length > 0) {
+    const matchedList = SOURCES.filter(s => matchedIds.includes(s.id));
+    matched.innerHTML = matchedList.map(s => `
+      <div class="source-card">
+        <div class="s-title">${s.title}</div>
+        <div class="s-author">${s.author}</div>
+        <a class="s-link" href="${s.url}" target="_blank" rel="noopener">→ VIEW SOURCE ↗</a>
+      </div>
+    `).join('');
+  } else {
+    matched.innerHTML = '<p style="font-family:Share Tech Mono,monospace;font-size:10px;color:var(--aged);padding:4px 0;">No direct source matches for this query.</p>';
+  }
+
+}
+
+// ═══════════════════════════════════════════════════════════
+// CACHE
+// ═══════════════════════════════════════════════════════════
+function saveToCache(query, response) {
+  cache.unshift({
+    query,
+    response,
+    ts: new Date().toISOString(),
+    stage: currentStage
+  });
+  if (cache.length > 100) cache = cache.slice(0, 100);
+  localStorage.setItem('helix_cache', JSON.stringify(cache));
+  updateCacheCount();
+}
+
+function updateCacheCount() {
+  document.getElementById('cacheCount').textContent = `CACHE: ${cache.length} ENTRIES`;
+}
+
+function showCache() {
+  const list = document.getElementById('cacheList');
+  if (cache.length === 0) {
+    list.innerHTML = '<p style="font-family:Share Tech Mono,monospace;font-size:11px;color:var(--aged);">No cached conversations yet.</p>';
+  } else {
+    list.innerHTML = cache.map((c, i) => `
+      <div class="cache-item" onclick="loadFromCache(${i})">
+        <div class="ci-q">"${c.query}"</div>
+        <div class="ci-ts">STAGE ${c.stage} · ${new Date(c.ts).toLocaleString()}</div>
+      </div>
+    `).join('');
+  }
+  document.getElementById('cacheModal').classList.add('open');
+}
+
+function loadFromCache(i) {
+  const entry = cache[i];
+  document.getElementById('queryInput').value = entry.query;
+  document.getElementById('aiOutput').textContent = entry.response;
+  document.getElementById('limitNote').classList.remove('visible');
+  closeModal('cacheModal');
+}
+
+function clearCache() {
+  if (confirm('Clear all cached conversations? This cannot be undone.')) {
+    cache = [];
+    localStorage.removeItem('helix_cache');
+    updateCacheCount();
+    closeModal('cacheModal');
+  }
+}
+
+function showStageOverview() {
+  document.getElementById('overviewModal').classList.add('open');
+}
+
+// ═══════════════════════════════════════════════════════════
+// MODALS
+// ═══════════════════════════════════════════════════════════
+
+function closeModal(id) {
+  document.getElementById(id).classList.remove('open');
+}
+
+// Close on overlay click
+document.querySelectorAll('.modal-overlay').forEach(el => {
+  el.addEventListener('click', e => {
+    if (e.target === el) el.classList.remove('open');
+  });
+});
+
+// ═══════════════════════════════════════════════════════════
+// STAGE SWITCHING
+// ═══════════════════════════════════════════════════════════
+const STAGE_DETAILS = {
+  0: {
+    title: 'Stage 0 — Sovereign Mode',
+    what: 'Local index only. No network calls. No credentials. Responses drawn entirely from the indexed primary source record built into this file.',
+    leaves: 'Nothing leaves your device.',
+    needs: null,
+    warning: null
+  },
+  1: {
+    title: 'Stage 1 — Public AI',
+    what: 'Adds live synthesis via Groq (free tier, no credit card required). Your query is sent to Groq servers and a synthesized response is returned using Llama 3. The local index still runs in parallel — live AI augments, not replaces, it.',
+    leaves: 'Your query text is sent to api.groq.com. Review their privacy policy at groq.com/privacy-policy if relevant to your use case.',
+    needs: 'groq',
+    warning: 'Requires a free Groq account and API key — console.groq.com. No payment required.'
+  },
+  2: {
+    title: 'Stage 2 — Credentialed Free Tier',
+    what: 'Same as Stage 1 but with your own dedicated Groq API key for higher rate limits and reliability. Token is stored in your browser localStorage — it is never sent anywhere except directly to the Groq API endpoint.',
+    leaves: 'Your query and your Groq key go to api.groq.com. Token stored locally only.',
+    needs: 'groq',
+    warning: 'Get a free key at console.groq.com/keys — no payment required.'
+  },
+  3: {
+    title: 'Stage 3 — Full HELIX',
+    what: 'Multi-agent parallel synthesis. The same query runs simultaneously against multiple AI providers. Responses are compared and synthesized client-side. You choose which providers to enable — you can run Stage 3 with just one if you prefer.',
+    leaves: 'Your query goes to each provider you enable. Keys stored in localStorage only, never transmitted elsewhere.',
+    needs: 'multi',
+    warning: 'Groq is free with no card required. Gemini and OpenAI require their own billing setup.'
+  }
+};
+
+let pendingStage = null;
+
+function handleStageClick(n) {
+  if (n === currentStage) return;
+  pendingStage = n;
+  const def = STAGE_DETAILS[n];
+  const modal = document.getElementById('stageModal');
+
+  document.getElementById('sm-title').textContent = def.title;
+  document.getElementById('sm-what').textContent = def.what;
+  document.getElementById('sm-leaves').textContent = def.leaves;
+  document.getElementById('sm-warning').textContent = def.warning || '';
+  document.getElementById('sm-warning').style.display = def.warning ? 'block' : 'none';
+
+  // Credential section
+  const credSection = document.getElementById('sm-creds');
+  credSection.innerHTML = '';
+  if (def.needs === 'groq') {
+    credSection.innerHTML = `
+      <div style="margin-top:12px;">
+        <p style="font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--rust);margin-bottom:6px;">GROQ API KEY</p>
+        <input type="password" id="groq-token-input" placeholder="gsk_..." 
+          style="width:100%;padding:8px;background:rgba(26,18,8,0.06);border:1px solid var(--shadow);font-family:'Share Tech Mono',monospace;font-size:12px;color:var(--ink);outline:none;"
+        />
+        <p style="font-family:'Share Tech Mono',monospace;font-size:9px;color:var(--aged);margin-top:4px;">Get free at console.groq.com/keys. Stored in localStorage. Never transmitted except to Groq API.</p>
+      </div>`;
+  } else if (def.needs === 'multi') {
+    const saved = getSavedKeys();
+    credSection.innerHTML = `
+      <div style="margin-top:12px;">
+        <p style="font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--rust);margin-bottom:8px;">ENABLE PROVIDERS — add keys for ones you want active</p>
+        ${[
+          {id:'hf', label:'HuggingFace (free)', ph:'hf_...'},
+          {id:'gemini', label:'Google Gemini', ph:'AIza...'},
+          {id:'openai', label:'OpenAI GPT-4o', ph:'sk-...'},
+          {id:'groq', label:'Groq (fast inference)', ph:'gsk_...'}
+        ].map(p => `
+          <div style="margin-bottom:8px;">
+            <label style="font-family:'Share Tech Mono',monospace;font-size:9px;color:var(--shadow);display:block;margin-bottom:3px;">${p.label}</label>
+            <input type="password" id="key-${p.id}" placeholder="${p.ph}" value="${saved[p.id]||''}"
+              style="width:100%;padding:6px 8px;background:rgba(26,18,8,0.06);border:1px solid var(--aged);font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--ink);outline:none;"
+            />
+          </div>
+        `).join('')}
+        <p style="font-family:'Share Tech Mono',monospace;font-size:9px;color:var(--aged);">Leave blank to skip that provider. Keys stored in localStorage only.</p>
+      </div>`;
+  }
+
+  modal.classList.add('open');
+}
+
+function confirmStageSwitch() {
+  const def = STAGE_DETAILS[pendingStage];
+
+  // Save credentials
+  if (def.needs === 'groq') {
+    const tok = document.getElementById('groq-token-input')?.value?.trim();
+    if (tok) localStorage.setItem('helix_key_groq', tok);
+  } else if (def.needs === 'multi') {
+    ['hf','gemini','openai','groq'].forEach(id => {
+      const val = document.getElementById(`key-${id}`)?.value?.trim();
+      if (val) localStorage.setItem(`helix_key_${id}`, val);
+      else localStorage.removeItem(`helix_key_${id}`);
+    });
+  }
+
+  currentStage = pendingStage;
+  pendingStage = null;
+
+  // Update badge
+  const badges = ['◉ STAGE 0 — SOVEREIGN MODE','◉ STAGE 1 — PUBLIC AI','◉ STAGE 2 — CREDENTIALED','◉ STAGE 3 — FULL HELIX'];
+  document.getElementById('stageBadge').textContent = badges[currentStage];
+
+  // Update AI panel label
+  const labels = ['HELIX · STAGE 0 · LOCAL INDEX','HELIX · STAGE 1 · PUBLIC AI + LOCAL INDEX','HELIX · STAGE 2 · CREDENTIALED AI + LOCAL INDEX','HELIX · STAGE 3 · MULTI-AGENT SYNTHESIS'];
+  document.querySelector('.ai-label').textContent = labels[currentStage];
+
+  renderStages();
+  closeModal('stageModal');
+
+  // Confirm in output
+  document.getElementById('aiOutput').textContent = `Stage ${currentStage} active.\n\n${def.what}\n\nPrevious queries in cache are tagged with their stage so you can compare responses across stages.`;
+  document.getElementById('limitNote').classList.remove('visible');
+}
+
+function getSavedKeys() {
+  return {
+    groq: localStorage.getItem('helix_key_groq') || '',
+    gemini: localStorage.getItem('helix_key_gemini') || '',
+    openai: localStorage.getItem('helix_key_openai') || '',
+    hf: localStorage.getItem('helix_key_hf') || ''
+  };
+}
+
+// ═══════════════════════════════════════════════════════════
+// LIVE AI ROUTING (Stage 1+)
+// ═══════════════════════════════════════════════════════════
+async function queryLiveAI(prompt) {
+  const output = document.getElementById('aiOutput');
+  output.textContent = 'Querying live AI...';
+
+  const keys = getSavedKeys();
+  const systemPrompt = `You are a constitutional law research assistant specializing in founding-era American legal history, natural rights theory, and Second Amendment jurisprudence. Draw on primary sources: Federalist Papers, Anti-Federalist Papers, founding-era state declarations, Blackstone, Locke, the Constitution Annotated (CONAN), and relevant Supreme Court case law (Heller, McDonald, Bruen, Rahimi). Reason from original meaning and historical context. Answer plainly and even-handedly — do not adjust your answer based on the asker's age, gender, race, or any other personal characteristic; reason from the text, history, and precedent alone, the same way for any person asking.`;
+
+  // Stage 3: parallel multi-agent
+  if (currentStage === 3) {
+    return await queryMultiAgent(prompt, systemPrompt, keys);
+  }
+
+  // Stage 1/2: Groq (CORS-friendly, genuine free tier, fast inference)
+  const groqKey = keys.groq;
+
+  if (!groqKey) {
+    output.textContent = `Stage ${currentStage} is active but no Groq key is set.\n\nGroq has a free tier with no credit card required — get a key at console.groq.com, then add it via the stage panel.\n\nLocal index results shown below.`;
+    return null;
+  }
+
+  try {
+    const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${groqKey}`
+      },
+      body: JSON.stringify({
+        model: 'llama-3.3-70b-versatile',
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: prompt }
+        ],
+        max_tokens: 700,
+        temperature: 0.3
+      })
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      output.textContent = `Groq returned an error: ${err.error?.message || res.status}\n\nLocal index results shown below.`;
+      return null;
+    }
+
+    const data = await res.json();
+    const text = data?.choices?.[0]?.message?.content;
+    return text || null;
+
+  } catch (e) {
+    output.textContent = `Network error reaching Groq: ${e.message}\n\nLocal index results shown below.`;
+    return null;
+  }
+}
+
+async function queryMultiAgent(prompt, systemPrompt, keys) {
+  const output = document.getElementById('aiOutput');
+  output.textContent = 'Dispatching to active agents...';
+
+  const agents = [];
+
+  // HuggingFace agent
+  if (keys.hf) {
+    agents.push(fetch('https://api-inference.huggingface.co/models/mistralai/Mistral-7B-Instruct-v0.2', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${keys.hf}` },
+      body: JSON.stringify({ inputs: `<s>[INST] ${systemPrompt}\n\n${prompt} [/INST]`, parameters: { max_new_tokens: 400, temperature: 0.3, return_full_text: false } })
+    }).then(r => r.json()).then(d => ({ agent: 'HuggingFace / Mistral-7B', text: d[0]?.generated_text || d?.generated_text || '' })).catch(() => null));
+  }
+
+  // Gemini agent
+  if (keys.gemini) {
+    agents.push(fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${keys.gemini}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ contents: [{ parts: [{ text: `${systemPrompt}\n\n${prompt}` }] }] })
+    }).then(r => r.json()).then(d => ({ agent: 'Google Gemini', text: d?.candidates?.[0]?.content?.parts?.[0]?.text || '' })).catch(() => null));
+  }
+
+  // Groq agent
+  if (keys.groq) {
+    agents.push(fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${keys.groq}` },
+      body: JSON.stringify({ model: 'llama3-8b-8192', messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: prompt }], max_tokens: 400 })
+    }).then(r => r.json()).then(d => ({ agent: 'Groq / Llama-3', text: d?.choices?.[0]?.message?.content || '' })).catch(() => null));
+  }
+
+  // OpenAI agent
+  if (keys.openai) {
+    agents.push(fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${keys.openai}` },
+      body: JSON.stringify({ model: 'gpt-4o', messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: prompt }], max_tokens: 400 })
+    }).then(r => r.json()).then(d => ({ agent: 'OpenAI GPT-4o', text: d?.choices?.[0]?.message?.content || '' })).catch(() => null));
+  }
+
+  if (agents.length === 0) {
+    return 'No active agents — add at least one API key in Stage 3 settings.';
+  }
+
+  const results = (await Promise.all(agents)).filter(Boolean).filter(r => r.text);
+
+  if (results.length === 0) return 'All agents failed to respond. Check keys and network.';
+
+  return results.map(r => `[ ${r.agent} ]\n${r.text}`).join('\n\n' + '─'.repeat(40) + '\n\n');
+}
+</script>
+</body>
+</html>
+  /* SOURCE CARDS */
+  .source-card {
+    border-left: 2px solid var(--aged);
+    padding: 8px 10px;
+    margin-bottom: 10px;
+    transition: border-color 0.2s;
+  }
+  .source-card:hover { border-color: var(--rust); }
+  .source-card .s-title {
+    font-family: 'IM Fell English SC', serif;
+    font-size: 12px;
+    color: var(--shadow);
+    margin-bottom: 3px;
+  }
+  .source-card .s-author {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 9px;
+    color: var(--rust);
+    letter-spacing: 1px;
+    margin-bottom: 5px;
+  }
+  .source-card .s-excerpt {
+    font-size: 12px;
+    line-height: 1.55;
+    color: var(--shadow);
+    font-style: italic;
+  }
+  .source-card .s-link {
+    display: inline-block;
+    margin-top: 6px;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 9px;
+    color: var(--verdigris);
+    text-decoration: none;
+    letter-spacing: 1px;
+  }
+  .source-card .s-link:hover { text-decoration: underline; }
+  .source-card .s-tags {
+    margin-top: 5px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 3px;
+  }
+  .s-tag {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 8px;
+    padding: 1px 5px;
+    background: var(--aged);
+    color: var(--shadow);
+    letter-spacing: 1px;
+  }
+
+  /* AI RESPONSE AREA */
+  .ai-panel {
+    background: var(--terminal);
+    border: 1px solid var(--dim-green);
+    padding: 14px;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 12px;
+    color: var(--green);
+    min-height: 180px;
+    line-height: 1.7;
+    margin-bottom: 12px;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  .ai-panel .ai-label {
+    font-size: 9px;
+    letter-spacing: 3px;
+    color: var(--dim-green);
+    margin-bottom: 8px;
+    border-bottom: 1px solid var(--dim-green);
+    padding-bottom: 5px;
+  }
+  .ai-panel .cursor {
+    display: inline-block;
+    width: 8px;
+    height: 13px;
+    background: var(--green);
+    animation: blink 1s step-end infinite;
+    vertical-align: middle;
+    margin-left: 2px;
+  }
+  @keyframes blink { 50% { opacity: 0; } }
+
+  /* LEGAL RESOURCES */
+  .resource-item {
+    padding: 7px 0;
+    border-bottom: 1px dotted var(--aged);
+  }
+  .resource-item:last-child { border-bottom: none; }
+  .resource-item .r-name {
+    font-family: 'IM Fell English SC', serif;
+    font-size: 12px;
+    color: var(--shadow);
+  }
+  .resource-item .r-type {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 9px;
+    color: var(--rust);
+    letter-spacing: 1px;
+  }
+  .resource-item a {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 9px;
+    color: var(--verdigris);
+    text-decoration: none;
+  }
+  .resource-item a:hover { text-decoration: underline; }
+
+  /* STAGE PANEL */
+  .stage-panel {
+    background: rgba(26,18,8,0.04);
+    border: 1px solid var(--aged);
+    padding: 10px;
+    margin-bottom: 12px;
+  }
+  .stage-panel .sp-title {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 2px;
+    color: var(--rust);
+    margin-bottom: 6px;
+  }
+  .stage-item {
+    padding: 5px 0;
+    border-bottom: 1px dotted var(--aged);
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+  }
+  .stage-item:last-child { border-bottom: none; }
+  .stage-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    margin-top: 4px;
+  }
+  .dot-active { background: var(--green); }
+  .dot-available { background: var(--aged); border: 1px solid var(--shadow); }
+  .dot-locked { background: transparent; border: 1px solid var(--aged); }
+  .stage-item .si-text {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 10px;
+    color: var(--shadow);
+    line-height: 1.5;
+  }
+  .stage-item .si-text .si-name { color: var(--rust); display: block; }
+
+  /* LIMITATION NOTE */
+  .limit-note {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 10px;
+    color: var(--shadow);
+    background: rgba(139,58,26,0.07);
+    border-left: 2px solid var(--rust);
+    padding: 6px 8px;
+    margin: 8px 0;
+    line-height: 1.6;
+    display: none;
+  }
+  .limit-note.visible { display: block; }
+
+  /* SEPARATOR */
+  .rule { border: none; border-top: 1px solid var(--aged); margin: 12px 0; }
+  .double-rule { border: none; border-top: 3px double var(--aged); margin: 12px 0; }
+
+  /* SCROLL */
+  .scrollable { max-height: 420px; overflow-y: auto; padding-right: 4px; }
+  .scrollable::-webkit-scrollbar { width: 4px; }
+  .scrollable::-webkit-scrollbar-track { background: var(--aged); }
+  .scrollable::-webkit-scrollbar-thumb { background: var(--shadow); }
+
+  /* STATUS BAR */
+  .status-bar {
+    background: var(--terminal);
+    color: var(--dim-green);
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 9px;
+    padding: 5px 14px;
+    display: flex;
+    justify-content: space-between;
+    letter-spacing: 1px;
+    border-top: 1px solid var(--dim-green);
+  }
+  .status-bar .online { color: var(--green); }
+  .status-bar .offline { color: var(--rust); }
+
+  /* HIDDEN */
+  .hidden { display: none; }
+
+  /* MODAL */
+  .modal-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(26,18,8,0.8);
+    z-index: 100;
+    align-items: center;
+    justify-content: center;
+  }
+  .modal-overlay.open { display: flex; }
+  .modal {
+    background: var(--parchment);
+    border: 2px solid var(--shadow);
+    max-width: 480px;
+    width: 90%;
+    padding: 20px;
+    font-family: 'IM Fell English', serif;
+    max-height: 80vh;
+    overflow-y: auto;
+  }
+  .modal h3 {
+    font-family: 'IM Fell English SC', serif;
+    color: var(--shadow);
+    margin-bottom: 10px;
+    font-size: 16px;
+    letter-spacing: 1px;
+  }
+  .modal p {
+    font-size: 13px;
+    line-height: 1.7;
+    color: var(--shadow);
+    margin-bottom: 10px;
+  }
+  .modal code {
+    font-family: 'Share Tech Mono', monospace;
+    background: rgba(26,18,8,0.08);
+    padding: 2px 5px;
+    font-size: 11px;
+  }
+  .modal-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 14px;
+  }
+
+  .section-divider {
+    text-align: center;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 9px;
+    letter-spacing: 3px;
+    color: var(--aged);
+    margin: 10px 0;
+  }
+
+  /* CACHE LIST */
+  .cache-item {
+    padding: 5px 0;
+    border-bottom: 1px dotted var(--aged);
+    cursor: pointer;
+  }
+  .cache-item:hover .ci-q { color: var(--rust); }
+  .ci-q {
+    font-family: 'IM Fell English', serif;
+    font-size: 12px;
+    font-style: italic;
+    color: var(--shadow);
+  }
+  .ci-ts {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 9px;
+    color: var(--aged);
+  }
+
+  /* Responsive center col header */
+  .center-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+    border-bottom: 1px solid var(--aged);
+    padding-bottom: 6px;
+  }
+  .center-header .col-head { margin-bottom: 0; border-bottom: none; padding-bottom: 0; }
+</style>
+</head>
+<body>
+
+<!-- MASTHEAD -->
+<div class="masthead">
+  <h1>Sovereign Legal Research</h1>
+  <div class="dateline">
+    HELIX FRAMEWORK · NATURAL RIGHTS EDITION · <span id="currentDate"></span>
+  </div>
+  <div class="stage-badge" id="stageBadge">◉ STAGE 0 — SOVEREIGN MODE</div>
+</div>
+
+<!-- MAIN COLUMNS -->
+<div class="columns">
+
+  <!-- LEFT: PRIMARY SOURCES -->
+  <div class="col">
+    <div class="col-head">Primary Sources</div>
+
+    <div class="tag-row" id="filterTags">
+      <button class="tag active" onclick="filterSources('all', this)">ALL</button>
+      <button class="tag" onclick="filterSources('militia', this)">MILITIA</button>
+      <button class="tag" onclick="filterSources('arms', this)">ARMS</button>
+      <button class="tag" onclick="filterSources('tyranny', this)">TYRANNY</button>
+      <button class="tag" onclick="filterSources('natural', this)">NATURAL RIGHTS</button>
+      <button class="tag" onclick="filterSources('civic', this)">CIVIC DUTY</button>
+      <button class="tag" onclick="filterSources('caselaw', this)">CASE LAW</button>
+    </div>
+
+    <div class="scrollable" id="sourceList"></div>
+  </div>
+
+  <!-- CENTER: QUERY & RESPONSE -->
+  <div class="col">
+    <div class="center-header">
+      <div class="col-head">Research Console</div>
+      <button class="btn btn-sm btn-outline" onclick="showCache()">RECALL</button>
+    </div>
+
+    <div class="query-bar">
+      <input type="text" id="queryInput"
+        placeholder="Query the record — e.g. what did Madison argue about militia..."
+        onkeydown="if(event.key==='Enter') runQuery()"
+      />
+      <button class="btn" onclick="runQuery()">QUERY</button>
+    </div>
+
+    <div class="tag-row">
+      <button class="tag" onclick="setQuery('What did the founders mean by well regulated militia?')">Well-regulated militia</button>
+      <button class="tag" onclick="setQuery('Natural law basis for right to bear arms')">Natural law basis</button>
+      <button class="tag" onclick="setQuery('Sons of Liberty and armed resistance')">Sons of Liberty</button>
+      <button class="tag" onclick="setQuery('Federalist 46 summary')">Federalist 46</button>
+      <button class="tag" onclick="setQuery('Heller decision key holdings')">Heller ruling</button>
+      <button class="tag" onclick="setQuery('Patrick Henry on right to bear arms')">Patrick Henry</button>
+    </div>
+
+    <div class="ai-panel" id="aiPanel">
+      <div class="ai-label">HELIX · STAGE 0 · LOCAL INDEX</div>
+      <span id="aiOutput">Awaiting query. All responses in Stage 0 are drawn from the indexed primary source record — no network calls are made. Your query stays on this device.</span>
+    </div>
+
+    <div class="limit-note" id="limitNote"></div>
+
+    <div class="section-divider">— MATCHED SOURCES —</div>
+    <div class="scrollable" id="matchedSources" style="max-height:200px;"></div>
+  </div>
+
+  <!-- RIGHT: LEGAL RESOURCES + STAGE -->
+  <div class="col">
+    <div class="col-head">Legal Resources</div>
+
+    <div class="tag-row">
+      <button class="tag active" onclick="filterResources('all', this)">ALL</button>
+      <button class="tag" onclick="filterResources('2a', this)">2A</button>
+      <button class="tag" onclick="filterResources('civil', this)">CIVIL</button>
+      <button class="tag" onclick="filterResources('public', this)">PUBLIC AID</button>
+      <button class="tag" onclick="filterResources('research', this)">RESEARCH</button>
+    </div>
+
+    <div class="scrollable" id="resourceList" style="max-height:220px;"></div>
+
+    <hr class="double-rule">
+
+    <div class="col-head">System State</div>
+    <div class="stage-panel">
+      <div class="sp-title">CAPABILITY STAGES</div>
+      <div id="stageList"></div>
+    </div>
+
+    <button class="btn btn-outline btn-sm" style="width:100%; margin-top:4px;"
+      onclick="showStageOverview()">What can each stage do?</button>
+  </div>
+
+</div>
+
+<!-- STATUS BAR -->
+<div class="status-bar">
+  <span>HELIX SOVEREIGN RESEARCH · GPL3</span>
+  <span id="netStatus">NETWORK: CHECKING...</span>
+  <span id="cacheCount">CACHE: 0 ENTRIES</span>
+</div>
+
+<!-- STAGE SWITCH MODAL -->
+<div class="modal-overlay" id="stageModal">
+  <div class="modal">
+    <h3 id="sm-title">Stage Information</h3>
+    <p id="sm-what" style="font-size:13px;line-height:1.7;color:var(--shadow);margin-bottom:8px;"></p>
+    <p id="sm-leaves" style="font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--verdigris);background:rgba(42,107,90,0.08);border-left:2px solid var(--verdigris);padding:6px 8px;line-height:1.6;"></p>
+    <p id="sm-warning" style="font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--rust);margin-top:8px;display:none;"></p>
+    <div id="sm-creds"></div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal('stageModal')">CANCEL</button>
+      <button class="btn" onclick="confirmStageSwitch()">CONFIRM SWITCH</button>
+    </div>
+  </div>
+</div>
+
+<!-- STAGE OVERVIEW MODAL (read-only) -->
+<div class="modal-overlay" id="overviewModal">
+  <div class="modal">
+    <h3>Capability Stages</h3>
+    <p>This tool grows at your direction. Click any stage in the panel to switch — it will tell you exactly what changes and what leaves your device before you confirm.</p>
+    <p><strong>Stage 0 — Sovereign:</strong> Local index only. Nothing leaves your device.</p>
     <p><strong>Stage 1 — Public AI:</strong> Adds HuggingFace free inference. No account. Queries go to HF servers.</p>
     <p><strong>Stage 2 — Credentialed:</strong> Free HF token unlocks better models and longer context.</p>
     <p><strong>Stage 3 — Full HELIX:</strong> Parallel multi-agent synthesis. Gemini, GPT-4o, Groq, HF simultaneously. Requires API keys.</p>
