@@ -1403,12 +1403,21 @@ function stripHtml(html) {
   return (html || '').replace(/<[^>]*>/g, '');
 }
 
+function extractSearchTerms(query) {
+  const stopwords = new Set(['what','did','the','a','an','is','are','was','were','rule','ruling','case','court','supreme','about','in','on','of','to','for','and','or','how','does','do','i','you','my','me','tell','explain','summary','summarize','holding','said']);
+  const words = query.toLowerCase().replace(/[^\w\s]/g, ' ').split(/\s+/).filter(w => w.length > 2 && !stopwords.has(w));
+  return words.join(' ');
+}
+
 async function fetchRelevantCases(query) {
+  const terms = extractSearchTerms(query);
+  const searchQuery = terms.length > 0 ? terms : query;
+
   try {
-    const res = await fetch(`https://www.courtlistener.com/api/rest/v4/search/?q=${encodeURIComponent(query)}&court=scotus&type=o&order_by=score%20desc&format=json`);
+    const res = await fetch(`https://www.courtlistener.com/api/rest/v4/search/?q=${encodeURIComponent(searchQuery)}&court=scotus&type=o&order_by=score%20desc&format=json`);
     if (!res.ok) return '';
     const data = await res.json();
-    const results = (data.results || []).slice(0, 3);
+    const results = (data.results || []).slice(0, 4);
     if (results.length === 0) return '';
     return results.map(r => {
       const name = r.caseName || r.case_name || 'Unknown case';
@@ -1419,6 +1428,7 @@ async function fetchRelevantCases(query) {
   } catch (e) {
     return '';
   }
+}
 }function getSavedKeys() {
   return {
     groq: localStorage.getItem('helix_key_groq') || '',
