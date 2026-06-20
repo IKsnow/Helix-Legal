@@ -1424,11 +1424,12 @@ async function queryLiveAI(prompt) {
   const keys = getSavedKeys();
   const systemPrompt = `You are a constitutional law research assistant specializing in founding-era American legal history, natural rights theory, and Second Amendment jurisprudence. Draw on primary sources: Federalist Papers, Anti-Federalist Papers, founding-era state declarations, Blackstone, Locke, the Constitution Annotated (CONAN), and relevant Supreme Court case law (Heller, McDonald, Bruen, Rahimi). Reason from original meaning and historical context. Answer plainly and even-handedly — do not adjust your answer based on the asker's age, gender, race, or any other personal characteristic; reason from the text, history, and precedent alone, the same way for any person asking.
 
-CRITICAL: Never invent, guess, or approximate a case name, citation, docket number, or holding. If you are not fully confident a specific case is real and you are recalling its holding accurately, explicitly say "I'm not certain of a specific case for this" rather than fabricating one. A wrong or invented citation is far worse than admitting uncertainty. Your knowledge has a training cutoff and may be missing recent decisions — say so when relevant rather than guessing at what a recent ruling might say.`;
+CRITICAL: Never invent, guess, or approximate a case name, citation, docket number, or holding. If you are not fully confident a specific case is real and you are recalling its holding accurately, explicitly say "I'm not certain of a specific case for this" rather than fabricating one. A wrong or invented citation is far worse than admitting uncertainty. Your knowledge has a training cutoff and may be missing recent decisions — say so when relevant rather than guessing at what a recent ruling might say.`;const caseContext = await fetchRelevantCases(prompt);
+  const fullSystemPrompt = systemPrompt + (caseContext ? `\n\nLIVE CASE LOOKUP RESULTS (court opinions matching this query — use if relevant, more current than your training data):\n${caseContext}` : '');
 
   // Stage 3: parallel multi-agent
   if (currentStage === 3) {
-    return await queryMultiAgent(prompt, systemPrompt, keys);
+    return await queryMultiAgent(prompt, fullSystemPrompt, keys);
   }
 
 // Stage 1: baked-in key via Cloudflare Worker proxy (zero setup for visitors)
@@ -1440,7 +1441,7 @@ CRITICAL: Never invent, guess, or approximate a case name, citation, docket numb
         body: JSON.stringify({
           model: 'llama-3.3-70b-versatile',
           messages: [
-            { role: 'system', content: systemPrompt },
+            { role: 'system', content: fullSystemPrompt },
             { role: 'user', content: prompt }
           ],
           max_tokens: 700,
@@ -1482,7 +1483,7 @@ CRITICAL: Never invent, guess, or approximate a case name, citation, docket numb
       body: JSON.stringify({
         model: 'llama-3.3-70b-versatile',
         messages: [
-          { role: 'system', content: systemPrompt },
+          { role: 'system', content: fullSystemPrompt },
           { role: 'user', content: prompt }
         ],
         max_tokens: 700,
