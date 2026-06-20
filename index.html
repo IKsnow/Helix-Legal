@@ -1008,6 +1008,7 @@ let currentStage = 0;
 let activeSourceFilter = 'all';
 let activeResourceFilter = 'all';
 let cache = JSON.parse(localStorage.getItem('helix_cache') || '[]');
+const WORKER_URL = 'https://dawn-boat-5780.snow-jedi-isaiha420.workers.dev';
 
 // ═══════════════════════════════════════════════════════════
 // INIT
@@ -1278,10 +1279,10 @@ const STAGE_DETAILS = {
   },
   1: {
     title: 'Stage 1 — Public AI',
-    what: 'Adds live synthesis via Groq (free tier, no credit card required). Your query is sent to Groq servers and a synthesized response is returned using Llama 3. The local index still runs in parallel — live AI augments, not replaces, it.',
-    leaves: 'Your query text is sent to api.groq.com. Review their privacy policy at groq.com/privacy-policy if relevant to your use case.',
-    needs: 'groq',
-    warning: 'Requires a free Groq account and API key — console.groq.com. No payment required.'
+    what: 'Adds live synthesis instantly, no signup required. Your query is routed through a HELIX-operated proxy to Groq and a synthesized response is returned using Llama 3. The local index still runs in parallel — live AI augments, not replaces, it.',
+    leaves: 'Your query text is sent to the HELIX proxy, then to Groq. No account or key needed on your end.',
+    needs: null,
+    warning: null
   },
   2: {
     title: 'Stage 2 — Credentialed Free Tier',
@@ -1408,11 +1409,44 @@ async function queryLiveAI(prompt) {
     return await queryMultiAgent(prompt, systemPrompt, keys);
   }
 
-  // Stage 1/2: Groq (CORS-friendly, genuine free tier, fast inference)
+// Stage 1: baked-in key via Cloudflare Worker proxy (zero setup for visitors)
+  if (currentStage === 1) {
+    try {
+      const res = await fetch(WORKER_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: 'llama-3.3-70b-versatile',
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: prompt }
+          ],
+          max_tokens: 700,
+          temperature: 0.3
+        })
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        output.textContent = `Stage 1 proxy returned an error: ${err.error || res.status}\n\nLocal index results shown below.`;
+        return null;
+      }
+
+      const data = await res.json();
+      const text = data?.choices?.[0]?.message?.content;
+      return text || null;
+
+    } catch (e) {
+      output.textContent = `Network error reaching Stage 1 proxy: ${e.message}\n\nLocal index results shown below.`;
+      return null;
+    }
+  }
+
+  // Stage 2: visitor's own Groq key, called directly from their browser
   const groqKey = keys.groq;
 
   if (!groqKey) {
-    output.textContent = `Stage ${currentStage} is active but no Groq key is set.\n\nGroq has a free tier with no credit card required — get a key at console.groq.com, then add it via the stage panel.\n\nLocal index results shown below.`;
+    output.textContent = `Stage 2 is active but no Groq key is set.\n\nGet a free key at console.groq.com, then add it via the stage panel.\n\nLocal index results shown below.`;
     return null;
   }
 
