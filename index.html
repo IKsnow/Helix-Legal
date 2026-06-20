@@ -1385,7 +1385,27 @@ function confirmStageSwitch() {
   document.getElementById('limitNote').classList.remove('visible');
 }
 
-function getSavedKeys() {
+function stripHtml(html) {
+  return (html || '').replace(/<[^>]*>/g, '');
+}
+
+async function fetchRelevantCases(query) {
+  try {
+    const res = await fetch(`https://www.courtlistener.com/api/rest/v4/search/?q=${encodeURIComponent(query)}&court=scotus&type=o&order_by=score%20desc&format=json`);
+    if (!res.ok) return '';
+    const data = await res.json();
+    const results = (data.results || []).slice(0, 3);
+    if (results.length === 0) return '';
+    return results.map(r => {
+      const name = r.caseName || r.case_name || 'Unknown case';
+      const year = (r.dateFiled || r.date_filed || '').slice(0, 4);
+      const snippet = stripHtml(r.snippet || '');
+      return `${name} (${year}): ${snippet}`;
+    }).join('\n');
+  } catch (e) {
+    return '';
+  }
+}function getSavedKeys() {
   return {
     groq: localStorage.getItem('helix_key_groq') || '',
     gemini: localStorage.getItem('helix_key_gemini') || '',
